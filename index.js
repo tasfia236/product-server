@@ -10,9 +10,7 @@ const port = process.env.PORT || 8000;
 app.use(cors());
 app.use(express.json());
 
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wxwisw2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
 
 const client = new MongoClient(uri, {
     serverApi: {
@@ -21,24 +19,65 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
-        client.connect()
+        client.connect();
         const clothCollection = client.db("clothesDB").collection("clothes");
 
         app.get('/clothes', async (req, res) => {
             try {
-                // Get page and limit from query parameters (default: page 1, limit 10)
+                // Pagination
                 const page = parseInt(req.query.page) || 1;
                 const limit = parseInt(req.query.limit) || 10;
                 const skip = (page - 1) * limit;
 
-                // Get the total count of products
-                const totalItems = await clothCollection.countDocuments();
+                // Filters
+                const searchTerm = req.query.searchTerm || '';
+                const categoryFilter = req.query.category || '';
+                const brandFilter = req.query.brand || '';
+                const priceFilter = req.query.price || '';
+                const sortOption = req.query.sort || '';
 
-                // Fetch paginated products
-                const clothes = await clothCollection.find()
+                // Build the query object
+                let query = {};
+
+                if (searchTerm) {
+                    query.productName = { $regex: searchTerm, $options: 'i' };
+                }
+
+                if (categoryFilter) {
+                    query.category = categoryFilter;
+                }
+
+                if (brandFilter) {
+                    query.brandName = brandFilter;
+                }
+
+                if (priceFilter === 'under50') {
+                    query.price = { $lt: 50 };
+                } else if (priceFilter === '50To100') {
+                    query.price = { $gte: 50, $lte: 100 };
+                } else if (priceFilter === 'over100') {
+                    query.price = { $gt: 100 };
+                }
+
+                // Sorting
+                let sort = {};
+                if (sortOption === 'priceLowToHigh') {
+                    sort.price = 1; // Ascending
+                } else if (sortOption === 'priceHighToLow') {
+                    sort.price = -1; // Descending
+                } else if (sortOption === 'newestFirst') {
+                    sort.createdAt = -1; // Newest first
+                }
+
+                // Get total count before applying skip and limit
+                const totalItems = await clothCollection.countDocuments(query);
+
+                // Fetch filtered, sorted, and paginated data
+                const clothes = await clothCollection.find(query)
+                    .sort(sort)
                     .skip(skip)
                     .limit(limit)
                     .toArray();
@@ -60,22 +99,16 @@ async function run() {
             }
         });
 
-
-
         app.get('/', (req, res) => {
-            res.send('running');
-        })
-
+            res.send('Server is running');
+        });
 
     } finally {
-        // Ensures that the client will close when you finish/error
-        // await client.close();
+        // Leave client open for future requests
     }
 }
 run().catch(console.dir);
 
-
-
 app.listen(port, () => {
-    console.log(`brand server is running on port ${port}`);
-})
+    console.log(`Clothes server is running on port ${port}`);
+});
