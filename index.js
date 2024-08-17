@@ -28,10 +28,38 @@ async function run() {
         const clothCollection = client.db("clothesDB").collection("clothes");
 
         app.get('/clothes', async (req, res) => {
-            const cursor = clothCollection.find();
-            const result = await cursor.toArray();
-            res.send(result);
-        })
+            try {
+                // Get page and limit from query parameters (default: page 1, limit 10)
+                const page = parseInt(req.query.page) || 1;
+                const limit = parseInt(req.query.limit) || 10;
+                const skip = (page - 1) * limit;
+
+                // Get the total count of products
+                const totalItems = await clothCollection.countDocuments();
+
+                // Fetch paginated products
+                const clothes = await clothCollection.find()
+                    .skip(skip)
+                    .limit(limit)
+                    .toArray();
+
+                // Calculate total number of pages
+                const totalPages = Math.ceil(totalItems / limit);
+
+                // Send response with paginated data and metadata
+                res.json({
+                    totalItems,
+                    totalPages,
+                    currentPage: page,
+                    itemsPerPage: limit,
+                    clothes,
+                });
+            } catch (error) {
+                console.error('Error fetching clothes:', error);
+                res.status(500).json({ message: 'Internal Server Error' });
+            }
+        });
+
 
 
         app.get('/', (req, res) => {
